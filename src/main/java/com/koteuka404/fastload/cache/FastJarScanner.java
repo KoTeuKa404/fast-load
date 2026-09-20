@@ -102,6 +102,7 @@ public final class FastJarScanner {
         long started = System.nanoTime();
         long scannedClasses = 0L;
         boolean cacheable = CacheManager.ENABLED && ASM_INTERFACES_FIELD != null && source != null && source.isFile();
+        boolean scanCompleted = false;
 
         FMLLog.log.debug("Examining file {} for potential mods (FastLoad)", source == null ? "<null>" : source.getName());
 
@@ -152,6 +153,7 @@ public final class FastJarScanner {
                     container.setClassVersion(parser.getClassVersion());
                 }
             }
+            scanCompleted = true;
         } catch (Exception e) {
             FMLLog.log.warn("Zip file {} failed to read properly, it will be ignored", source.getName(), e);
         }
@@ -160,7 +162,7 @@ public final class FastJarScanner {
         cache.scanNanos = scanNanos;
         LoadStats.cacheMiss(scannedClasses, scanNanos);
 
-        if (cacheable) {
+        if (cacheable && scanCompleted) {
             try {
                 CacheManager.save(source, cache);
                 LOGGER.debug("Cache MISS: {} -> stored {} classes / {} ASM entries ({} ms)", source.getName(), cache.classEntries.size(), cache.asmData.size(), scanNanos / 1_000_000L);
