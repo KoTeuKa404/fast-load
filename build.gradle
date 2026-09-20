@@ -1,0 +1,60 @@
+buildscript {
+    repositories {
+        mavenCentral()
+        maven { url = "https://files.minecraftforge.net/maven" }
+    }
+    dependencies {
+        classpath 'net.minecraftforge.gradle:ForgeGradle:2.3-SNAPSHOT'
+    }
+}
+
+apply plugin: 'net.minecraftforge.gradle.forge'
+
+version = "0.1.0"
+group = "com.koteuka404.fastload"
+archivesBaseName = "FastLoad"
+
+sourceCompatibility = targetCompatibility = '1.8'
+
+minecraft {
+    // Same ForgeGradle setup style as ThaumicForever.
+    // 2820 is used for the userdev artifact; the built mod targets Forge 1.12.2 generally.
+    version = "1.12.2-14.23.5.2820"
+    runDir = "run"
+    mappings = "snapshot_20171003"
+    clientRunArgs = ["--username", "KoTeuKa404"]
+}
+
+repositories {
+    mavenCentral()
+    maven { url = "https://files.minecraftforge.net/maven" }
+}
+
+dependencies {
+    // Minecraft/Forge already ship ASM at runtime. This makes the tree API explicit for compilation.
+    compile 'org.ow2.asm:asm-tree:5.2'
+}
+
+jar {
+    manifest {
+        attributes(
+            "FMLCorePlugin": "com.koteuka404.fastload.core.FastLoadCorePlugin",
+            "FMLCorePluginContainsFMLMod": "true",
+            "ForceLoadAsMod": "true"
+        )
+    }
+}
+
+processResources {
+    inputs.property "version", project.version
+    inputs.property "mcversion", project.minecraft.version
+
+    from(sourceSets.main.resources.srcDirs) {
+        include 'mcmod.info'
+        expand 'version': project.version, 'mcversion': project.minecraft.version
+    }
+
+    from(sourceSets.main.resources.srcDirs) {
+        exclude 'mcmod.info'
+    }
+}
