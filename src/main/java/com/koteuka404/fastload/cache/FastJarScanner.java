@@ -2,6 +2,7 @@ package com.koteuka404.fastload.cache;
 
 import com.koteuka404.fastload.profiler.LoadStats;
 import net.minecraftforge.fml.common.FMLLog;
+import net.minecraftforge.fml.common.FMLModContainer;
 import net.minecraftforge.fml.common.LoaderException;
 import net.minecraftforge.fml.common.MetadataCollection;
 import net.minecraftforge.fml.common.ModContainer;
@@ -200,6 +201,10 @@ public final class FastJarScanner {
 
         for (ModAnnotation annotation : parser.getAnnotations()) {
             if (ModContainerFactory.modTypes.containsKey(annotation.getASMType())) {
+                Constructor<? extends ModContainer> constructor = ModContainerFactory.modTypes.get(annotation.getASMType());
+                if (!FMLModContainer.class.equals(constructor.getDeclaringClass())) {
+                    throw new IllegalStateException("Custom ModContainer types are not cached in v0.1: " + constructor.getDeclaringClass().getName());
+                }
                 CachedJar.CachedMod mod = new CachedJar.CachedMod();
                 mod.annotationName = annotation.getASMType().getClassName();
                 mod.className = parser.getASMType().getClassName();
