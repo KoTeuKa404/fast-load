@@ -29,7 +29,8 @@ public final class JarDiscovererTransformer implements IClassTransformer {
             new ClassReader(basicClass).accept(classNode, 0);
 
             MethodNode target = null;
-            for (MethodNode method : classNode.methods) {
+            for (Object methodObject : classNode.methods) {
+                MethodNode method = (MethodNode) methodObject;
                 if ("discover".equals(method.name) && METHOD_DESC.equals(method.desc)) {
                     target = method;
                     break;
