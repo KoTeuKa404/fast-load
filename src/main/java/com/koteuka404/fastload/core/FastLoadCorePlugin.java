@@ -12,7 +12,10 @@ public final class FastLoadCorePlugin implements IFMLLoadingPlugin {
 
     @Override
     public String[] getASMTransformerClass() {
-        return new String[]{"com.koteuka404.fastload.core.JarDiscovererTransformer"};
+        return new String[]{
+                "com.koteuka404.fastload.core.JarDiscovererTransformer",
+                "com.koteuka404.fastload.core.ForgeMappingTransformer"
+        };
     }
 
     @Override

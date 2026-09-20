@@ -1,6 +1,6 @@
 # FastLoad
 
-FastLoad is an experimental Forge 1.12.2 coremod that reduces repeated mod-discovery work between launches.
+FastLoad is an experimental Forge 1.12.2 coremod that reduces repeated startup work between launches and profiles expensive Forge loading phases.
 
 ## What it caches
 
@@ -14,6 +14,27 @@ On the first launch FastLoad scans mod JARs normally and records:
 
 On later launches, unchanged JARs can restore this discovery data without reopening and ASM-parsing every `.class` file.
 
+## v0.2 startup profiling
+
+v0.2 keeps the v0.1 discovery cache and additionally instruments Forge's `ForgeModContainer.mappingChanged()` path.
+
+The original Forge operations still run in the same order:
+
+1. `OreDictionary.rebakeMap()`
+2. `StatList.reinit()`
+3. `Ingredient.invalidateAll()`
+4. `FMLCommonHandler.resetClientRecipeBook()`
+5. `FMLCommonHandler.reloadSearchTrees()`
+6. `FMLCommonHandler.reloadCreativeSettings()`
+
+FastLoad only measures them and prints one summary line such as:
+
+```text
+FastLoad ModIdMapping profile: total=..., oreDictionary=..., statList=..., ingredients=..., recipeBook=..., searchTrees=..., creativeSettings=...
+```
+
+This profiling step is intentionally conservative: it does not skip any Forge work. The measurements identify which operation is responsible for slow `ModIdMapping` on large 1.12.2 packs so later optimizations can target the real bottleneck safely.
+
 ## Safety and fallback behavior
 
 FastLoad is designed to fail open:
@@ -23,7 +44,7 @@ FastLoad is designed to fail open:
 - writes go through a temporary file and atomic replace when supported;
 - cache entries are tied to the Forge version and registered mod-container types;
 - if cache restoration fails, the JAR is scanned normally;
-- if the ASM transformer cannot patch Forge, original Forge discovery is left untouched.
+- if an ASM transformer cannot patch Forge, original Forge behavior is left untouched.
 
 The normal fast path validates file size and modification time. A SHA-256 digest is stored on creation and rechecked when metadata changes. Use `-Dfastload.strictHashes=true` to hash every cache hit if maximum validation is preferred over launch speed.
 
@@ -70,4 +91,4 @@ ForgeGradle 2.3 should be run with Java 8. Set `JAVA_HOME` to a Java 8 JDK befor
 
 ## Current scope
 
-v0.1 targets Forge's mod JAR discovery / ASM scan. It does not yet cache model baking, textures, registries, or slow initialization code inside individual mods. The built-in profiler reports discovery cache hits, misses, scanned/restored classes, and estimated time saved.
+v0.2 caches Forge mod JAR discovery and profiles the expensive Forge ModIdMapping path. It does not yet cache model baking, textures, registries, CraftTweaker execution, or arbitrary initialization code inside individual mods.
