@@ -1,0 +1,15 @@
+run/
+.gradle/
+build/
+out/
+.idea/
+.vscode/
+*.iml
+*.ipr
+*.iws
+.classpath
+.project
+.settings/
+*.log
+hs_err_pid*.log
+fastload-cache/
