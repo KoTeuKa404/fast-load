@@ -27,12 +27,22 @@ public final class FastResourceIO {
     private FastResourceIO() {
     }
 
-    public static InputStream open(ResourceLocation location, IResourcePack resourcePack) throws IOException {
+    /*
+     * Object signatures are intentional. They are stable across the production
+     * reobfuscation boundary and are cast back to the real Minecraft types here.
+     */
+    public static InputStream open(Object locationObject, Object resourcePackObject) throws IOException {
+        ResourceLocation location = (ResourceLocation) locationObject;
+        IResourcePack resourcePack = (IResourcePack) resourcePackObject;
+
         OPENED_STREAMS.incrementAndGet();
         return resourcePack.getInputStream(location);
     }
 
-    public static boolean resourceExists(IResourcePack resourcePack, ResourceLocation location) {
+    public static boolean resourceExists(Object resourcePackObject, Object locationObject) {
+        IResourcePack resourcePack = (IResourcePack) resourcePackObject;
+        ResourceLocation location = (ResourceLocation) locationObject;
+
         EXISTENCE_QUERIES.incrementAndGet();
 
         ConcurrentHashMap<ResourceLocation, Boolean> packCache = EXISTENCE_CACHE.get(resourcePack);
@@ -56,6 +66,7 @@ public final class FastResourceIO {
             EXISTENCE_HITS.incrementAndGet();
             return previous.booleanValue();
         }
+
         return exists;
     }
 
@@ -86,8 +97,6 @@ public final class FastResourceIO {
                 INVALIDATIONS.get()
         );
 
-        // Startup model/resource loading is done by this point. Release the cache
-        // so it does not become a permanent memory cost during normal gameplay.
         EXISTENCE_CACHE.clear();
     }
 }

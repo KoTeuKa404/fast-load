@@ -1,6 +1,5 @@
 package com.koteuka404.fastload.model;
 
-import net.minecraft.util.ResourceLocation;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -14,7 +13,7 @@ public final class FastModelStats {
     private FastModelStats() {
     }
 
-    public static void recordNegative(ResourceLocation location) {
+    public static void recordNegative(Object location) {
         NEGATIVE_MODELS.incrementAndGet();
     }
 
@@ -22,6 +21,7 @@ public final class FastModelStats {
         if (summaryLogged) {
             return;
         }
+
         summaryLogged = true;
         LOGGER.info(
                 "FastLoad model summary: negativeModelsCached={}, stacklessWrapperExceptions={}",

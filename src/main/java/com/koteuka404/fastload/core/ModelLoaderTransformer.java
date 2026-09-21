@@ -6,6 +6,7 @@ import org.apache.logging.log4j.Logger;
 import org.objectweb.asm.ClassReader;
 import org.objectweb.asm.ClassWriter;
 import org.objectweb.asm.Opcodes;
+import org.objectweb.asm.Type;
 import org.objectweb.asm.tree.AbstractInsnNode;
 import org.objectweb.asm.tree.ClassNode;
 import org.objectweb.asm.tree.FieldInsnNode;
@@ -23,8 +24,7 @@ public final class ModelLoaderTransformer implements IClassTransformer {
     private static final String LOADER = "net.minecraftforge.client.model.ModelLoader";
     private static final String LOADER_EXCEPTION = "net.minecraftforge.client.model.ModelLoaderRegistry$LoaderException";
 
-    private static final String MISSING_DESC =
-            "(Lnet/minecraft/util/ResourceLocation;Ljava/lang/Throwable;)Lnet/minecraftforge/client/model/IModel;";
+    private static final String IMODEL_DESC = "Lnet/minecraftforge/client/model/IModel;";
     private static final String CACHE_DESC = "Ljava/util/Map;";
     private static final String FAST_MODEL_EXCEPTION = "com/koteuka404/fastload/model/FastModelException";
 
@@ -78,7 +78,16 @@ public final class ModelLoaderTransformer implements IClassTransformer {
 
         for (Object methodObject : classNode.methods) {
             MethodNode method = (MethodNode) methodObject;
-            if ("getMissingModel".equals(method.name) && MISSING_DESC.equals(method.desc)) {
+
+            if (!"getMissingModel".equals(method.name)
+                    || (method.access & Opcodes.ACC_STATIC) == 0) {
+                continue;
+            }
+
+            Type[] args = Type.getArgumentTypes(method.desc);
+            Type returnType = Type.getReturnType(method.desc);
+
+            if (args.length == 2 && IMODEL_DESC.equals(returnType.getDescriptor())) {
                 target = method;
                 break;
             }
@@ -104,7 +113,7 @@ public final class ModelLoaderTransformer implements IClassTransformer {
                     Opcodes.INVOKESTATIC,
                     "com/koteuka404/fastload/model/FastModelStats",
                     "recordNegative",
-                    "(Lnet/minecraft/util/ResourceLocation;)V",
+                    "(Ljava/lang/Object;)V",
                     false
             ));
             cachePut.add(new FieldInsnNode(
@@ -134,7 +143,7 @@ public final class ModelLoaderTransformer implements IClassTransformer {
             return false;
         }
 
-        LOGGER.info("FastLoad v0.6: installed per-reload negative model cache.");
+        LOGGER.info("FastLoad v0.7: installed per-reload negative model cache.");
         return true;
     }
 
@@ -143,6 +152,7 @@ public final class ModelLoaderTransformer implements IClassTransformer {
 
         for (Object methodObject : classNode.methods) {
             MethodNode method = (MethodNode) methodObject;
+
             for (AbstractInsnNode insn = method.instructions.getFirst(); insn != null; insn = insn.getNext()) {
                 if (insn instanceof TypeInsnNode) {
                     TypeInsnNode type = (TypeInsnNode) insn;
@@ -163,8 +173,9 @@ public final class ModelLoaderTransformer implements IClassTransformer {
         }
 
         if (replacements > 0) {
-            LOGGER.info("FastLoad v0.6: installed {} stackless model wrapper exception site(s).", replacements);
+            LOGGER.info("FastLoad v0.7: installed {} stackless model wrapper exception site(s).", replacements);
         }
+
         return replacements;
     }
 
@@ -190,7 +201,7 @@ public final class ModelLoaderTransformer implements IClassTransformer {
         method.maxLocals = 1;
         classNode.methods.add(method);
 
-        LOGGER.info("FastLoad v0.6: made Forge ModelLoaderRegistry.LoaderException stackless.");
+        LOGGER.info("FastLoad v0.7: made Forge ModelLoaderRegistry.LoaderException stackless.");
         return true;
     }
 }

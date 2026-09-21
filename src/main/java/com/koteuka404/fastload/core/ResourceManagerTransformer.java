@@ -6,6 +6,7 @@ import org.apache.logging.log4j.Logger;
 import org.objectweb.asm.ClassReader;
 import org.objectweb.asm.ClassWriter;
 import org.objectweb.asm.Opcodes;
+import org.objectweb.asm.Type;
 import org.objectweb.asm.tree.AbstractInsnNode;
 import org.objectweb.asm.tree.ClassNode;
 import org.objectweb.asm.tree.InsnList;
@@ -21,17 +22,19 @@ public final class ResourceManagerTransformer implements IClassTransformer {
     private static final String FALLBACK = "net.minecraft.client.resources.FallbackResourceManager";
     private static final String SIMPLE = "net.minecraft.client.resources.SimpleReloadableResourceManager";
 
-    private static final String INPUT_STREAM_DESC =
-            "(Lnet/minecraft/util/ResourceLocation;Lnet/minecraft/client/resources/IResourcePack;)Ljava/io/InputStream;";
-    private static final String RESOURCE_EXISTS_DESC =
-            "(Lnet/minecraft/util/ResourceLocation;)Z";
-    private static final String CACHED_RESOURCE_EXISTS_DESC =
-            "(Lnet/minecraft/client/resources/IResourcePack;Lnet/minecraft/util/ResourceLocation;)Z";
+    /*
+     * Do not put Minecraft classes in helper descriptors here. The production
+     * 1.12.2 jar is reobfuscated, while these descriptor strings are ordinary
+     * string constants and are not remapped by ForgeGradle.
+     */
+    private static final String FAST_OPEN_DESC =
+            "(Ljava/lang/Object;Ljava/lang/Object;)Ljava/io/InputStream;";
+    private static final String FAST_EXISTS_DESC =
+            "(Ljava/lang/Object;Ljava/lang/Object;)Z";
     private static final String RELOAD_RESOURCES_DESC = "(Ljava/util/List;)V";
 
     private static final String JAVA_FNFE = "java/io/FileNotFoundException";
     private static final String FAST_FNFE = "com/koteuka404/fastload/resource/FastFileNotFoundException";
-    private static final String PACK = "net/minecraft/client/resources/IResourcePack";
     private static final String FAST_IO = "com/koteuka404/fastload/resource/FastResourceIO";
 
     private static final boolean KEEP_VANILLA_LEAK_TRACKING =
@@ -75,18 +78,17 @@ public final class ResourceManagerTransformer implements IClassTransformer {
             classNode.accept(writer);
 
             if (streamPatch) {
-                LOGGER.info("FastLoad v0.6: disabled vanilla per-resource debug leak stacktrace tracking.");
+                LOGGER.info("FastLoad v0.7: disabled vanilla per-resource debug leak stacktrace tracking.");
             }
             if (fastMissPatches > 0) {
-                LOGGER.info("FastLoad v0.6: installed {} fast missing-resource exception site(s) in {}.",
+                LOGGER.info("FastLoad v0.7: installed {} fast missing-resource exception site(s) in {}.",
                         fastMissPatches, transformedName);
             }
             if (resourceExistsPatches > 0) {
-                LOGGER.info("FastLoad v0.6: cached {} IResourcePack.resourceExists call site(s).",
-                        resourceExistsPatches);
+                LOGGER.info("FastLoad v0.7: cached {} resourceExists call site(s).", resourceExistsPatches);
             }
             if (invalidationPatch) {
-                LOGGER.info("FastLoad v0.6: resource-existence cache will invalidate on every resource reload.");
+                LOGGER.info("FastLoad v0.7: resource-existence cache will invalidate on every resource reload.");
             }
 
             return writer.toByteArray();
@@ -101,9 +103,13 @@ public final class ResourceManagerTransformer implements IClassTransformer {
 
         for (Object methodObject : classNode.methods) {
             MethodNode method = (MethodNode) methodObject;
-            if (INPUT_STREAM_DESC.equals(method.desc)
-                    && (method.access & Opcodes.ACC_STATIC) == 0
-                    && (method.access & Opcodes.ACC_ABSTRACT) == 0) {
+            Type returnType = Type.getReturnType(method.desc);
+            Type[] args = Type.getArgumentTypes(method.desc);
+
+            if ((method.access & Opcodes.ACC_STATIC) == 0
+                    && (method.access & Opcodes.ACC_ABSTRACT) == 0
+                    && "java.io.InputStream".equals(returnType.getClassName())
+                    && args.length == 2) {
                 target = method;
                 break;
             }
@@ -121,7 +127,7 @@ public final class ResourceManagerTransformer implements IClassTransformer {
                 Opcodes.INVOKESTATIC,
                 FAST_IO,
                 "open",
-                INPUT_STREAM_DESC,
+                FAST_OPEN_DESC,
                 false
         ));
         replacement.add(new InsnNode(Opcodes.ARETURN));
@@ -142,19 +148,27 @@ public final class ResourceManagerTransformer implements IClassTransformer {
 
         for (Object methodObject : classNode.methods) {
             MethodNode method = (MethodNode) methodObject;
+
             for (AbstractInsnNode insn = method.instructions.getFirst(); insn != null; insn = insn.getNext()) {
                 if (!(insn instanceof MethodInsnNode)) {
                     continue;
                 }
 
                 MethodInsnNode invoke = (MethodInsnNode) insn;
-                if (invoke.getOpcode() == Opcodes.INVOKEINTERFACE
-                        && PACK.equals(invoke.owner)
-                        && RESOURCE_EXISTS_DESC.equals(invoke.desc)) {
+                if (invoke.getOpcode() != Opcodes.INVOKEINTERFACE) {
+                    continue;
+                }
+
+                Type returnType = Type.getReturnType(invoke.desc);
+                Type[] args = Type.getArgumentTypes(invoke.desc);
+
+                // In FallbackResourceManager the only one-argument boolean
+                // interface call is IResourcePack.resourceExists(ResourceLocation).
+                if (Type.BOOLEAN_TYPE.equals(returnType) && args.length == 1) {
                     invoke.setOpcode(Opcodes.INVOKESTATIC);
                     invoke.owner = FAST_IO;
                     invoke.name = "resourceExists";
-                    invoke.desc = CACHED_RESOURCE_EXISTS_DESC;
+                    invoke.desc = FAST_EXISTS_DESC;
                     invoke.itf = false;
                     replacements++;
                 }
@@ -167,6 +181,7 @@ public final class ResourceManagerTransformer implements IClassTransformer {
     private static boolean installReloadInvalidation(ClassNode classNode) {
         for (Object methodObject : classNode.methods) {
             MethodNode method = (MethodNode) methodObject;
+
             if (RELOAD_RESOURCES_DESC.equals(method.desc)
                     && (method.access & Opcodes.ACC_STATIC) == 0
                     && (method.access & Opcodes.ACC_PUBLIC) != 0) {
@@ -192,6 +207,7 @@ public final class ResourceManagerTransformer implements IClassTransformer {
 
         for (Object methodObject : classNode.methods) {
             MethodNode method = (MethodNode) methodObject;
+
             for (AbstractInsnNode insn = method.instructions.getFirst(); insn != null; insn = insn.getNext()) {
                 if (insn instanceof TypeInsnNode) {
                     TypeInsnNode type = (TypeInsnNode) insn;

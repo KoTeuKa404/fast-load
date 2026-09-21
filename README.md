@@ -14,6 +14,12 @@ On the first launch FastLoad scans mod JARs normally and records:
 
 On later launches, unchanged JARs can restore this discovery data without reopening and ASM-parsing every `.class` file.
 
+## v0.7 production-mapping fix
+
+v0.7 fixes the v0.6 resource/model ASM hooks for an actual reobfuscated Minecraft 1.12.2 runtime. The v0.6 implementation matched development descriptors containing deobfuscated Minecraft class names, so the leak-wrapper, resource-existence, and negative-model-cache hooks did not activate in a normal Forge installation.
+
+v0.7 identifies those methods by stable bytecode shape/return type and uses helper calls with `Object` descriptors that survive ForgeGradle reobfuscation. The startup summaries now make it easy to verify that the hooks are really active: `bypassedLeakWrappers`, `existenceQueries`, and `negativeModelsCached` must be non-zero on a large pack.
+
 ## v0.6 model failure + resource-existence cache
 
 v0.6 targets repeated work inside Forge's model loader without persisting baked models across launches.
@@ -133,4 +139,4 @@ The built JAR appears in `build/libs/`.
 
 ## Current scope
 
-v0.6 additionally memoizes resource existence during reloads, negative-caches failed models for that reload, and removes model-loader stacktrace allocation overhead. It still does not persist baked models, textures, CraftTweaker execution, or arbitrary mod lifecycle code across launches.
+v0.7 makes the v0.6 resource/model optimizations production-runtime safe. It memoizes resource existence during reloads, negative-caches failed models for that reload, and removes model-loader stacktrace allocation overhead. It still does not persist baked models, textures, CraftTweaker execution, or arbitrary mod lifecycle code across launches.
