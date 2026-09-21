@@ -1,5 +1,6 @@
 package com.koteuka404.fastload.profiler;
 
+import com.koteuka404.fastload.resource.FastResourceIO;
 import net.minecraft.item.crafting.Ingredient;
 import net.minecraft.stats.StatList;
 import net.minecraftforge.fml.common.FMLCommonHandler;
@@ -77,6 +78,7 @@ public final class ForgeMappingProfiler {
                 event != null && event.isFrozen,
                 event == null ? -1 : event.getRegistries().size()
         );
+        FastResourceIO.logSummary();
     }
 
     private static long timed(String name, Step step) {

@@ -14,6 +14,23 @@ On the first launch FastLoad scans mod JARs normally and records:
 
 On later launches, unchanged JARs can restore this discovery data without reopening and ASM-parsing every `.class` file.
 
+## v0.5 resource I/O fast path
+
+v0.5 targets a vanilla 1.12.2 debug-only cost that becomes significant in large packs. `FallbackResourceManager` normally wraps every resource stream in DEBUG mode and captures a full Java stack trace so leaked streams can later be diagnosed. During model and texture loading this can happen thousands of times.
+
+FastLoad now bypasses that diagnostic wrapper by default and opens the exact same resource stream directly. It also replaces resource-manager `FileNotFoundException` instances with a stackless subclass. Missing-resource behavior is unchanged, but exception creation is much cheaper when mods probe many model/resource paths.
+
+The final startup log includes a resource-I/O summary with the number of bypassed leak wrappers and fast missing-resource exceptions.
+
+Compatibility flags:
+
+```text
+-Dfastload.resourceLeakTracking=true
+-Dfastload.fastMissingResources=false
+```
+
+The first restores vanilla leaked-stream stacktrace tracking. The second restores normal `FileNotFoundException` allocation.
+
 ## v0.4 lazy recipe search tree
 
 Profiling a 190-mod pack showed that Forge's final no-remap registry freeze spent a large amount of time rebuilding search trees even though item IDs had not changed.
@@ -61,6 +78,8 @@ FastLoad is designed to fail open:
 - `-Dfastload.hashOnMetadataChange=false` — rebuild immediately when file metadata changes instead of checking whether content stayed identical.
 - `-Dfastload.optimizeFinalSearchTrees=false` — disable final search-tree optimization.
 - `-Dfastload.lazyRecipeSearchTree=false` — eagerly rebuild the final recipe search tree instead of deferring it.
+- `-Dfastload.resourceLeakTracking=true` — restore vanilla DEBUG leaked-resource stream stacktrace tracking.
+- `-Dfastload.fastMissingResources=false` — use normal stack-filled `FileNotFoundException` instances for missing resources.
 
 Cache files are stored under:
 
@@ -91,4 +110,4 @@ The built JAR appears in `build/libs/`.
 
 ## Current scope
 
-v0.4 caches Forge mod JAR discovery, reuses the already-built item search tree during the initial no-remap registry freeze, and defers final recipe-search indexing until first use. Model baking, textures, CraftTweaker execution, and arbitrary mod lifecycle code are not yet cached.
+v0.5 also removes debug-only per-resource stacktrace capture and uses cheap missing-resource exceptions, reducing model/resource loading overhead while keeping the same resource lookup results. Model baking, textures, CraftTweaker execution, and arbitrary mod lifecycle code are not yet cached.
