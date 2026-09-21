@@ -14,6 +14,12 @@ On the first launch FastLoad scans mod JARs normally and records:
 
 On later launches, unchanged JARs can restore this discovery data without reopening and ASM-parsing every `.class` file.
 
+## v0.7.1 resource hook crash fix
+
+v0.7.1 fixes a startup crash introduced by v0.7. The production-safe matcher for `resourceExists` was too broad and could rewrite unrelated one-argument boolean interface calls such as collection methods. The transformer now patches only the exact Minecraft method names `resourceExists` / `func_110589_b`.
+
+The resource stream helper is also restricted to `getInputStream` / `func_177245_a` instead of relying only on its argument/return shape.
+
 ## v0.7 production-mapping fix
 
 v0.7 fixes the v0.6 resource/model ASM hooks for an actual reobfuscated Minecraft 1.12.2 runtime. The v0.6 implementation matched development descriptors containing deobfuscated Minecraft class names, so the leak-wrapper, resource-existence, and negative-model-cache hooks did not activate in a normal Forge installation.

@@ -106,7 +106,12 @@ public final class ResourceManagerTransformer implements IClassTransformer {
             Type returnType = Type.getReturnType(method.desc);
             Type[] args = Type.getArgumentTypes(method.desc);
 
-            if ((method.access & Opcodes.ACC_STATIC) == 0
+            boolean isStreamHelper =
+                    "getInputStream".equals(method.name)
+                    || "func_177245_a".equals(method.name);
+
+            if (isStreamHelper
+                    && (method.access & Opcodes.ACC_STATIC) == 0
                     && (method.access & Opcodes.ACC_ABSTRACT) == 0
                     && "java.io.InputStream".equals(returnType.getClassName())
                     && args.length == 2) {
@@ -162,9 +167,17 @@ public final class ResourceManagerTransformer implements IClassTransformer {
                 Type returnType = Type.getReturnType(invoke.desc);
                 Type[] args = Type.getArgumentTypes(invoke.desc);
 
-                // In FallbackResourceManager the only one-argument boolean
-                // interface call is IResourcePack.resourceExists(ResourceLocation).
-                if (Type.BOOLEAN_TYPE.equals(returnType) && args.length == 1) {
+                // Match only IResourcePack.resourceExists. In production 1.12.2
+                // this is the SRG name func_110589_b; in a dev environment it is
+                // resourceExists. Do not use a shape-only match here: List.contains
+                // and other boolean interface methods have the same broad shape.
+                boolean isResourceExists =
+                        "resourceExists".equals(invoke.name)
+                        || "func_110589_b".equals(invoke.name);
+
+                if (isResourceExists
+                        && Type.BOOLEAN_TYPE.equals(returnType)
+                        && args.length == 1) {
                     invoke.setOpcode(Opcodes.INVOKESTATIC);
                     invoke.owner = FAST_IO;
                     invoke.name = "resourceExists";
