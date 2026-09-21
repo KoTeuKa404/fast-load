@@ -60,11 +60,13 @@ public final class ResourceManagerTransformer implements IClassTransformer {
             boolean invalidationPatch = false;
 
             if (FALLBACK.equals(transformedName)) {
+                MethodNode resourceStreamHelper = findResourceStreamHelper(classNode);
+
                 if (!KEEP_VANILLA_LEAK_TRACKING) {
-                    streamPatch = replaceDebugLeakTracking(classNode);
+                    streamPatch = replaceDebugLeakTracking(resourceStreamHelper);
                 }
                 if (RESOURCE_EXISTS_CACHE) {
-                    resourceExistsPatches = replaceResourceExistsCalls(classNode);
+                    resourceExistsPatches = replaceResourceExistsCalls(classNode, resourceStreamHelper);
                 }
             } else if (SIMPLE.equals(transformedName) && RESOURCE_EXISTS_CACHE) {
                 invalidationPatch = installReloadInvalidation(classNode);
@@ -98,30 +100,44 @@ public final class ResourceManagerTransformer implements IClassTransformer {
         }
     }
 
-    private static boolean replaceDebugLeakTracking(ClassNode classNode) {
-        MethodNode target = null;
+    private static MethodNode findResourceStreamHelper(ClassNode classNode) {
+        MethodNode candidate = null;
 
         for (Object methodObject : classNode.methods) {
             MethodNode method = (MethodNode) methodObject;
             Type returnType = Type.getReturnType(method.desc);
             Type[] args = Type.getArgumentTypes(method.desc);
 
-            boolean isStreamHelper =
-                    "getInputStream".equals(method.name)
-                    || "func_177245_a".equals(method.name);
-
-            if (isStreamHelper
-                    && (method.access & Opcodes.ACC_STATIC) == 0
+            boolean shapeMatches =
+                    (method.access & Opcodes.ACC_STATIC) == 0
                     && (method.access & Opcodes.ACC_ABSTRACT) == 0
                     && "java.io.InputStream".equals(returnType.getClassName())
-                    && args.length == 2) {
-                target = method;
-                break;
+                    && args.length == 2
+                    && (args[0].getSort() == Type.OBJECT || args[0].getSort() == Type.ARRAY)
+                    && (args[1].getSort() == Type.OBJECT || args[1].getSort() == Type.ARRAY);
+
+            if (!shapeMatches) {
+                continue;
             }
+
+            if (candidate != null) {
+                LOGGER.warn(
+                        "Found multiple two-argument InputStream helpers in FallbackResourceManager ({} and {}); resource fast path disabled for safety.",
+                        candidate.name + candidate.desc,
+                        method.name + method.desc
+                );
+                return null;
+            }
+
+            candidate = method;
         }
 
+        return candidate;
+    }
+
+    private static boolean replaceDebugLeakTracking(MethodNode target) {
         if (target == null) {
-            LOGGER.warn("Could not locate FallbackResourceManager resource stream helper; leak-tracker optimization disabled.");
+            LOGGER.warn("Could not uniquely locate FallbackResourceManager resource stream helper; leak-tracker optimization disabled.");
             return false;
         }
 
@@ -145,10 +161,28 @@ public final class ResourceManagerTransformer implements IClassTransformer {
         target.invisibleLocalVariableAnnotations = null;
         target.maxStack = 2;
         target.maxLocals = 3;
+
+        LOGGER.info(
+                "FastLoad v0.7.2: matched runtime resource stream helper {}{}.",
+                target.name,
+                target.desc
+        );
         return true;
     }
 
-    private static int replaceResourceExistsCalls(ClassNode classNode) {
+    private static int replaceResourceExistsCalls(ClassNode classNode, MethodNode streamHelper) {
+        if (streamHelper == null) {
+            LOGGER.warn("Cannot derive runtime IResourcePack owner; resourceExists cache disabled for safety.");
+            return 0;
+        }
+
+        Type[] helperArgs = Type.getArgumentTypes(streamHelper.desc);
+        if (helperArgs.length != 2 || helperArgs[1].getSort() != Type.OBJECT) {
+            LOGGER.warn("Unexpected resource stream helper descriptor {}; resourceExists cache disabled.", streamHelper.desc);
+            return 0;
+        }
+
+        final String resourcePackOwner = helperArgs[1].getInternalName();
         int replacements = 0;
 
         for (Object methodObject : classNode.methods) {
@@ -160,24 +194,18 @@ public final class ResourceManagerTransformer implements IClassTransformer {
                 }
 
                 MethodInsnNode invoke = (MethodInsnNode) insn;
-                if (invoke.getOpcode() != Opcodes.INVOKEINTERFACE) {
+                if (invoke.getOpcode() != Opcodes.INVOKEINTERFACE
+                        || !resourcePackOwner.equals(invoke.owner)) {
                     continue;
                 }
 
                 Type returnType = Type.getReturnType(invoke.desc);
                 Type[] args = Type.getArgumentTypes(invoke.desc);
 
-                // Match only IResourcePack.resourceExists. In production 1.12.2
-                // this is the SRG name func_110589_b; in a dev environment it is
-                // resourceExists. Do not use a shape-only match here: List.contains
-                // and other boolean interface methods have the same broad shape.
-                boolean isResourceExists =
-                        "resourceExists".equals(invoke.name)
-                        || "func_110589_b".equals(invoke.name);
-
-                if (isResourceExists
-                        && Type.BOOLEAN_TYPE.equals(returnType)
-                        && args.length == 1) {
+                // Derived owner makes this safe across deobf/SRG/fully-obfuscated
+                // runtimes. On IResourcePack the only one-argument boolean method
+                // is resourceExists(ResourceLocation).
+                if (Type.BOOLEAN_TYPE.equals(returnType) && args.length == 1) {
                     invoke.setOpcode(Opcodes.INVOKESTATIC);
                     invoke.owner = FAST_IO;
                     invoke.name = "resourceExists";
@@ -186,6 +214,19 @@ public final class ResourceManagerTransformer implements IClassTransformer {
                     replacements++;
                 }
             }
+        }
+
+        if (replacements == 0) {
+            LOGGER.warn(
+                    "Derived runtime IResourcePack owner {} but found no boolean one-argument call sites.",
+                    resourcePackOwner
+            );
+        } else {
+            LOGGER.info(
+                    "FastLoad v0.7.2: derived runtime IResourcePack owner {} and patched {} resourceExists call site(s).",
+                    resourcePackOwner,
+                    replacements
+            );
         }
 
         return replacements;

@@ -14,6 +14,12 @@ On the first launch FastLoad scans mod JARs normally and records:
 
 On later launches, unchanged JARs can restore this discovery data without reopening and ASM-parsing every `.class` file.
 
+## v0.7.2 runtime-derived resource hooks
+
+v0.7.2 removes the last name-based assumptions from the resource optimization. FastLoad now finds the unique two-argument `InputStream` helper inside `FallbackResourceManager`, derives the exact runtime `IResourcePack` internal name from that method descriptor, and patches only boolean one-argument interface calls on that exact owner.
+
+This survives deobfuscated, SRG, and fully obfuscated method names while avoiding the broad matcher that caused the v0.7.0 collection-method crash. Diagnostic log lines print the matched stream helper, derived runtime resource-pack owner, and number of patched call sites.
+
 ## v0.7.1 resource hook crash fix
 
 v0.7.1 fixes a startup crash introduced by v0.7. The production-safe matcher for `resourceExists` was too broad and could rewrite unrelated one-argument boolean interface calls such as collection methods. The transformer now patches only the exact Minecraft method names `resourceExists` / `func_110589_b`.
