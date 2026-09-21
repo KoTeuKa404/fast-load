@@ -2,7 +2,7 @@
 
 FastLoad is an experimental Forge 1.12.2 coremod that reduces repeated startup work between launches and profiles expensive Forge loading phases.
 
-## What it caches
+## Discovery cache
 
 On the first launch FastLoad scans mod JARs normally and records:
 
@@ -14,45 +14,45 @@ On the first launch FastLoad scans mod JARs normally and records:
 
 On later launches, unchanged JARs can restore this discovery data without reopening and ASM-parsing every `.class` file.
 
-## v0.2 startup profiling
+## v0.3 final search-tree optimization
 
-v0.2 keeps the v0.1 discovery cache and additionally instruments Forge's `ForgeModContainer.mappingChanged()` path.
+Profiling a 190-mod pack showed that Forge's final `FMLModIdMappingEvent` spent almost all of its time in `FMLCommonHandler.reloadSearchTrees()`.
 
-The original Forge operations still run in the same order:
+Forge 1.12.2 calls `GameData.freezeData()` with an empty remap map because no IDs changed at that point. FastLoad v0.3 therefore optimizes only the first frozen mapping event with zero remapped registries:
 
-1. `OreDictionary.rebakeMap()`
-2. `StatList.reinit()`
-3. `Ingredient.invalidateAll()`
-4. `FMLCommonHandler.resetClientRecipeBook()`
-5. `FMLCommonHandler.reloadSearchTrees()`
-6. `FMLCommonHandler.reloadCreativeSettings()`
+- the already-built item search tree is reused;
+- the recipe search tree is rebuilt from the final `RecipeBookClient.ALL_RECIPES`, so recipe changes made during init/post-init are reflected;
+- all other mapping events keep the original full Forge search-tree rebuild;
+- if the existing item tree is missing or the optimized path throws, FastLoad immediately falls back to the vanilla full rebuild.
 
-FastLoad only measures them and prints one summary line such as:
+This avoids repeating expensive tooltip/sub-item indexing for every item on the final no-remap freeze while preserving a fresh recipe search index.
+
+To force vanilla behavior:
 
 ```text
-FastLoad ModIdMapping profile: total=..., oreDictionary=..., statList=..., ingredients=..., recipeBook=..., searchTrees=..., creativeSettings=...
+-Dfastload.optimizeFinalSearchTrees=false
 ```
 
-This profiling step is intentionally conservative: it does not skip any Forge work. The measurements identify which operation is responsible for slow `ModIdMapping` on large 1.12.2 packs so later optimizations can target the real bottleneck safely.
+The ModIdMapping profiler remains enabled and reports the time spent in each Forge mapping step.
 
 ## Safety and fallback behavior
 
 FastLoad is designed to fail open:
 
-- corrupt or incompatible cache files are ignored and rebuilt;
+- corrupt or incompatible discovery cache files are ignored and rebuilt;
 - the cache uses an explicit bounded binary format, not Java object deserialization;
 - writes go through a temporary file and atomic replace when supported;
 - cache entries are tied to the Forge version and registered mod-container types;
 - if cache restoration fails, the JAR is scanned normally;
-- if an ASM transformer cannot patch Forge, original Forge behavior is left untouched.
-
-The normal fast path validates file size and modification time. A SHA-256 digest is stored on creation and rechecked when metadata changes. Use `-Dfastload.strictHashes=true` to hash every cache hit if maximum validation is preferred over launch speed.
+- if an ASM transformer cannot patch Forge, original Forge behavior is left untouched;
+- the search-tree optimization applies only to the first frozen event with zero remapped registries, and otherwise uses vanilla behavior.
 
 ## JVM flags
 
 - `-Dfastload.cache=false` — disable the discovery cache.
 - `-Dfastload.strictHashes=true` — verify SHA-256 on every cache lookup.
 - `-Dfastload.hashOnMetadataChange=false` — rebuild immediately when file metadata changes instead of checking whether content stayed identical.
+- `-Dfastload.optimizeFinalSearchTrees=false` — disable the v0.3 search-tree optimization and use Forge's full rebuild.
 
 Cache files are stored under:
 
@@ -79,16 +79,8 @@ Build on Windows:
 gradlew.bat build
 ```
 
-Run the dev client:
-
-```bat
-gradlew.bat runClient
-```
-
 The built JAR appears in `build/libs/`.
-
-ForgeGradle 2.3 should be run with Java 8. Set `JAVA_HOME` to a Java 8 JDK before building rather than hardcoding a machine-specific JDK path in the repository.
 
 ## Current scope
 
-v0.2 caches Forge mod JAR discovery and profiles the expensive Forge ModIdMapping path. It does not yet cache model baking, textures, registries, CraftTweaker execution, or arbitrary initialization code inside individual mods.
+v0.3 caches Forge mod JAR discovery and avoids one redundant full item search-tree rebuild during the initial no-remap registry freeze. It does not yet cache model baking, textures, CraftTweaker execution, or arbitrary initialization code inside individual mods.

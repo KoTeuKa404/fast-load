@@ -4,6 +4,7 @@ import net.minecraft.item.crafting.Ingredient;
 import net.minecraft.stats.StatList;
 import net.minecraftforge.fml.common.FMLCommonHandler;
 import net.minecraftforge.fml.common.event.FMLModIdMappingEvent;
+import net.minecraftforge.fml.relauncher.Side;
 import net.minecraftforge.oredict.OreDictionary;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -14,7 +15,7 @@ public final class ForgeMappingProfiler {
     private ForgeMappingProfiler() {
     }
 
-    public static void mappingChanged(FMLModIdMappingEvent event) {
+    public static void mappingChanged(final FMLModIdMappingEvent event) {
         long totalStart = System.nanoTime();
 
         long oreDictionary = timed("OreDictionary.rebakeMap", new Step() {
@@ -45,10 +46,14 @@ public final class ForgeMappingProfiler {
             }
         });
 
-        long searchTrees = timed("FMLCommonHandler.reloadSearchTrees", new Step() {
+        long searchTrees = timed("search-tree rebuild", new Step() {
             @Override
             public void run() {
-                FMLCommonHandler.instance().reloadSearchTrees();
+                if (FMLCommonHandler.instance().getSide() == Side.CLIENT) {
+                    FastSearchTreeOptimizer.reload(event);
+                } else {
+                    FMLCommonHandler.instance().reloadSearchTrees();
+                }
             }
         });
 
@@ -61,7 +66,7 @@ public final class ForgeMappingProfiler {
 
         long total = System.nanoTime() - totalStart;
         LOGGER.info(
-                "FastLoad ModIdMapping profile: total={} ms, oreDictionary={} ms, statList={} ms, ingredients={} ms, recipeBook={} ms, searchTrees={} ms, creativeSettings={} ms, frozen={}",
+                "FastLoad ModIdMapping profile: total={} ms, oreDictionary={} ms, statList={} ms, ingredients={} ms, recipeBook={} ms, searchTrees={} ms, creativeSettings={} ms, frozen={}, remapRegistries={}",
                 nanosToMillis(total),
                 nanosToMillis(oreDictionary),
                 nanosToMillis(statList),
@@ -69,7 +74,8 @@ public final class ForgeMappingProfiler {
                 nanosToMillis(recipeBook),
                 nanosToMillis(searchTrees),
                 nanosToMillis(creativeSettings),
-                event != null && event.isFrozen
+                event != null && event.isFrozen,
+                event == null ? -1 : event.getRegistries().size()
         );
     }
 
