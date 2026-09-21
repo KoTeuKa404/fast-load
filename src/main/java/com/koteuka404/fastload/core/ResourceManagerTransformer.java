@@ -9,11 +9,11 @@ import org.objectweb.asm.Opcodes;
 import org.objectweb.asm.tree.AbstractInsnNode;
 import org.objectweb.asm.tree.ClassNode;
 import org.objectweb.asm.tree.InsnList;
+import org.objectweb.asm.tree.InsnNode;
 import org.objectweb.asm.tree.MethodInsnNode;
 import org.objectweb.asm.tree.MethodNode;
 import org.objectweb.asm.tree.TypeInsnNode;
 import org.objectweb.asm.tree.VarInsnNode;
-import org.objectweb.asm.tree.InsnNode;
 
 public final class ResourceManagerTransformer implements IClassTransformer {
     private static final Logger LOGGER = LogManager.getLogger("FastLoad");
@@ -23,14 +23,23 @@ public final class ResourceManagerTransformer implements IClassTransformer {
 
     private static final String INPUT_STREAM_DESC =
             "(Lnet/minecraft/util/ResourceLocation;Lnet/minecraft/client/resources/IResourcePack;)Ljava/io/InputStream;";
+    private static final String RESOURCE_EXISTS_DESC =
+            "(Lnet/minecraft/util/ResourceLocation;)Z";
+    private static final String CACHED_RESOURCE_EXISTS_DESC =
+            "(Lnet/minecraft/client/resources/IResourcePack;Lnet/minecraft/util/ResourceLocation;)Z";
+    private static final String RELOAD_RESOURCES_DESC = "(Ljava/util/List;)V";
 
     private static final String JAVA_FNFE = "java/io/FileNotFoundException";
     private static final String FAST_FNFE = "com/koteuka404/fastload/resource/FastFileNotFoundException";
+    private static final String PACK = "net/minecraft/client/resources/IResourcePack";
+    private static final String FAST_IO = "com/koteuka404/fastload/resource/FastResourceIO";
 
     private static final boolean KEEP_VANILLA_LEAK_TRACKING =
             Boolean.parseBoolean(System.getProperty("fastload.resourceLeakTracking", "false"));
     private static final boolean FAST_MISSING_EXCEPTIONS =
             Boolean.parseBoolean(System.getProperty("fastload.fastMissingResources", "true"));
+    private static final boolean RESOURCE_EXISTS_CACHE =
+            Boolean.parseBoolean(System.getProperty("fastload.resourceExistsCache", "true"));
 
     @Override
     public byte[] transform(String name, String transformedName, byte[] basicClass) {
@@ -43,25 +52,41 @@ public final class ResourceManagerTransformer implements IClassTransformer {
             new ClassReader(basicClass).accept(classNode, 0);
 
             int fastMissPatches = FAST_MISSING_EXCEPTIONS ? replaceFileNotFoundExceptions(classNode) : 0;
+            int resourceExistsPatches = 0;
             boolean streamPatch = false;
+            boolean invalidationPatch = false;
 
-            if (FALLBACK.equals(transformedName) && !KEEP_VANILLA_LEAK_TRACKING) {
-                streamPatch = replaceDebugLeakTracking(classNode);
+            if (FALLBACK.equals(transformedName)) {
+                if (!KEEP_VANILLA_LEAK_TRACKING) {
+                    streamPatch = replaceDebugLeakTracking(classNode);
+                }
+                if (RESOURCE_EXISTS_CACHE) {
+                    resourceExistsPatches = replaceResourceExistsCalls(classNode);
+                }
+            } else if (SIMPLE.equals(transformedName) && RESOURCE_EXISTS_CACHE) {
+                invalidationPatch = installReloadInvalidation(classNode);
             }
 
-            if (!streamPatch && fastMissPatches == 0) {
+            if (!streamPatch && !invalidationPatch && fastMissPatches == 0 && resourceExistsPatches == 0) {
                 return basicClass;
             }
 
-            ClassWriter writer = new ClassWriter(0);
+            ClassWriter writer = new ClassWriter(ClassWriter.COMPUTE_MAXS);
             classNode.accept(writer);
 
             if (streamPatch) {
-                LOGGER.info("FastLoad v0.5: disabled vanilla per-resource debug leak stacktrace tracking.");
+                LOGGER.info("FastLoad v0.6: disabled vanilla per-resource debug leak stacktrace tracking.");
             }
             if (fastMissPatches > 0) {
-                LOGGER.info("FastLoad v0.5: installed {} fast missing-resource exception site(s) in {}.",
+                LOGGER.info("FastLoad v0.6: installed {} fast missing-resource exception site(s) in {}.",
                         fastMissPatches, transformedName);
+            }
+            if (resourceExistsPatches > 0) {
+                LOGGER.info("FastLoad v0.6: cached {} IResourcePack.resourceExists call site(s).",
+                        resourceExistsPatches);
+            }
+            if (invalidationPatch) {
+                LOGGER.info("FastLoad v0.6: resource-existence cache will invalidate on every resource reload.");
             }
 
             return writer.toByteArray();
@@ -94,7 +119,7 @@ public final class ResourceManagerTransformer implements IClassTransformer {
         replacement.add(new VarInsnNode(Opcodes.ALOAD, 2));
         replacement.add(new MethodInsnNode(
                 Opcodes.INVOKESTATIC,
-                "com/koteuka404/fastload/resource/FastResourceIO",
+                FAST_IO,
                 "open",
                 INPUT_STREAM_DESC,
                 false
@@ -110,6 +135,56 @@ public final class ResourceManagerTransformer implements IClassTransformer {
         target.maxStack = 2;
         target.maxLocals = 3;
         return true;
+    }
+
+    private static int replaceResourceExistsCalls(ClassNode classNode) {
+        int replacements = 0;
+
+        for (Object methodObject : classNode.methods) {
+            MethodNode method = (MethodNode) methodObject;
+            for (AbstractInsnNode insn = method.instructions.getFirst(); insn != null; insn = insn.getNext()) {
+                if (!(insn instanceof MethodInsnNode)) {
+                    continue;
+                }
+
+                MethodInsnNode invoke = (MethodInsnNode) insn;
+                if (invoke.getOpcode() == Opcodes.INVOKEINTERFACE
+                        && PACK.equals(invoke.owner)
+                        && RESOURCE_EXISTS_DESC.equals(invoke.desc)) {
+                    invoke.setOpcode(Opcodes.INVOKESTATIC);
+                    invoke.owner = FAST_IO;
+                    invoke.name = "resourceExists";
+                    invoke.desc = CACHED_RESOURCE_EXISTS_DESC;
+                    invoke.itf = false;
+                    replacements++;
+                }
+            }
+        }
+
+        return replacements;
+    }
+
+    private static boolean installReloadInvalidation(ClassNode classNode) {
+        for (Object methodObject : classNode.methods) {
+            MethodNode method = (MethodNode) methodObject;
+            if (RELOAD_RESOURCES_DESC.equals(method.desc)
+                    && (method.access & Opcodes.ACC_STATIC) == 0
+                    && (method.access & Opcodes.ACC_PUBLIC) != 0) {
+                InsnList prefix = new InsnList();
+                prefix.add(new MethodInsnNode(
+                        Opcodes.INVOKESTATIC,
+                        FAST_IO,
+                        "invalidateExistenceCache",
+                        "()V",
+                        false
+                ));
+                method.instructions.insert(prefix);
+                return true;
+            }
+        }
+
+        LOGGER.warn("Could not locate SimpleReloadableResourceManager reload method; resource-existence cache disabled for reload safety.");
+        return false;
     }
 
     private static int replaceFileNotFoundExceptions(ClassNode classNode) {

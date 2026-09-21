@@ -14,6 +14,26 @@ On the first launch FastLoad scans mod JARs normally and records:
 
 On later launches, unchanged JARs can restore this discovery data without reopening and ASM-parsing every `.class` file.
 
+## v0.6 model failure + resource-existence cache
+
+v0.6 targets repeated work inside Forge's model loader without persisting baked models across launches.
+
+- failed model locations are inserted into Forge's existing per-reload model cache, so the same broken/missing model is not loaded and failed repeatedly during one reload;
+- Forge `ModelLoaderRegistry.LoaderException` becomes stackless by default, keeping exception semantics while avoiding expensive stack capture for expected missing-model probes;
+- the wrapper exception used for failed blockstate/model definitions is also stackless;
+- `IResourcePack.resourceExists` results are memoized during a resource reload and invalidated automatically at the next reload;
+- the resource-existence cache is released after startup so it does not become a permanent gameplay memory cost.
+
+Compatibility flags:
+
+```text
+-Dfastload.negativeModelCache=false
+-Dfastload.fastModelExceptions=false
+-Dfastload.resourceExistsCache=false
+```
+
+These independently restore Forge's retry/exception/resource-existence behavior.
+
 ## v0.5 resource I/O fast path
 
 v0.5 targets a vanilla 1.12.2 debug-only cost that becomes significant in large packs. `FallbackResourceManager` normally wraps every resource stream in DEBUG mode and captures a full Java stack trace so leaked streams can later be diagnosed. During model and texture loading this can happen thousands of times.
@@ -80,6 +100,9 @@ FastLoad is designed to fail open:
 - `-Dfastload.lazyRecipeSearchTree=false` — eagerly rebuild the final recipe search tree instead of deferring it.
 - `-Dfastload.resourceLeakTracking=true` — restore vanilla DEBUG leaked-resource stream stacktrace tracking.
 - `-Dfastload.fastMissingResources=false` — use normal stack-filled `FileNotFoundException` instances for missing resources.
+- `-Dfastload.resourceExistsCache=false` — disable per-reload `resourceExists` memoization.
+- `-Dfastload.negativeModelCache=false` — do not remember failed model locations during a reload.
+- `-Dfastload.fastModelExceptions=false` — restore full Forge model-loader exception stack traces.
 
 Cache files are stored under:
 
@@ -110,4 +133,4 @@ The built JAR appears in `build/libs/`.
 
 ## Current scope
 
-v0.5 also removes debug-only per-resource stacktrace capture and uses cheap missing-resource exceptions, reducing model/resource loading overhead while keeping the same resource lookup results. Model baking, textures, CraftTweaker execution, and arbitrary mod lifecycle code are not yet cached.
+v0.6 additionally memoizes resource existence during reloads, negative-caches failed models for that reload, and removes model-loader stacktrace allocation overhead. It still does not persist baked models, textures, CraftTweaker execution, or arbitrary mod lifecycle code across launches.
