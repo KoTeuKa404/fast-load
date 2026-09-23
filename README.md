@@ -14,11 +14,11 @@ On the first launch FastLoad scans mod JARs normally and records:
 
 On later launches, unchanged JARs can restore this discovery data without reopening and ASM-parsing every `.class` file.
 
-## v0.7.6 persistent model/research resource cache
+## v0.7.8 persistent mod-resource index and cache
 
-v0.7.6 extends the bounded JSON cache to Thaumcraft-compatible `research/*.json` resources. These files are read while Thaumcraft builds its research registry during PostInit, so unchanged mod JARs no longer need to reopen them from disk on every launch. The cache only reuses raw bytes; JSON parsing and registry construction still run normally.
+v0.7.8 adds a persistent asset-name index for every unchanged Forge mod JAR. Forge `resourceExists` checks can answer both positive and negative lookups from that index instead of reopening the JAR for every query. The bounded raw-resource cache covers static metadata and data resources: JSON, language files, properties, configs, scripts, model text, and similar small resources.
 
-The cache remains bounded and fail-open. Dynamic and external resource packs are left on the original path.
+The index and resource cache are tied to the canonical source path, file size, and modification time, so changing or replacing a mod automatically selects a new cache identity. Binary render assets and external/dynamic resource packs stay on the original path to avoid turning the first launch into a large asset copy. Class loading, JSON parsing, recipe registration, and mod lifecycle code still run normally.
 
 ## v0.7.5 persistent model-resource cache
 
@@ -145,7 +145,7 @@ FastLoad is designed to fail open:
 - `-Dfastload.resourceLeakTracking=true` — restore vanilla DEBUG leaked-resource stream stacktrace tracking.
 - `-Dfastload.fastMissingResources=false` — use normal stack-filled `FileNotFoundException` instances for missing resources.
 - `-Dfastload.resourceExistsCache=false` — disable per-reload `resourceExists` memoization.
-- `-Dfastload.resourceContentCache=false` — disable bounded model/blockstate JSON content reuse during a resource reload.
+- `-Dfastload.resourceContentCache=false` — disable bounded static mod-resource content reuse during a resource reload.
 - `-Dfastload.negativeModelCache=false` — do not remember failed model locations during a reload.
 - `-Dfastload.fastModelExceptions=false` — restore full Forge model-loader exception stack traces.
 
@@ -178,4 +178,4 @@ The built JAR appears in `build/libs/`.
 
 ## Current scope
 
-v0.7.6 makes the v0.6 resource/model optimizations production-runtime safe, adds persistent raw research-resource reuse, and keeps baked models, textures, CraftTweaker execution, and arbitrary mod lifecycle code out of the cache.
+v0.7.8 makes the v0.6 resource/model optimizations production-runtime safe, persists a safe mod-resource index and static resources for all unchanged mod JARs, and keeps textures, CraftTweaker execution, and arbitrary mod lifecycle code out of the cache.

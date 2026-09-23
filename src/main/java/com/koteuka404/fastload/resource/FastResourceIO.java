@@ -34,11 +34,11 @@ public final class FastResourceIO {
     private static final AtomicLong OPENED_STREAMS = new AtomicLong();
     private static final AtomicLong EXISTENCE_QUERIES = new AtomicLong();
     private static final AtomicLong EXISTENCE_HITS = new AtomicLong();
+    private static final AtomicLong PERSISTENT_EXISTENCE_HITS = new AtomicLong();
+    private static final AtomicLong INDEXED_RESOURCE_ENTRIES = new AtomicLong();
     private static final AtomicLong INVALIDATIONS = new AtomicLong();
     private static final AtomicLong CONTENT_CACHE_HITS = new AtomicLong();
     private static final AtomicLong PERSISTENT_CONTENT_CACHE_HITS = new AtomicLong();
-    private static final AtomicLong RESEARCH_CONTENT_CACHE_HITS = new AtomicLong();
-    private static final AtomicLong PERSISTENT_RESEARCH_CACHE_HITS = new AtomicLong();
     private static final AtomicLong CONTENT_CACHE_BYTES = new AtomicLong();
 
     private static volatile boolean summaryLogged;
@@ -59,16 +59,11 @@ public final class FastResourceIO {
             return resourcePack.getInputStream(location);
         }
 
-        boolean researchResource = isResearchResource(location);
-
         ConcurrentHashMap<ResourceLocation, byte[]> packCache = CONTENT_CACHE.get(resourcePack);
         if (packCache != null) {
             byte[] cached = packCache.get(location);
             if (cached != null) {
                 CONTENT_CACHE_HITS.incrementAndGet();
-                if (researchResource) {
-                    RESEARCH_CONTENT_CACHE_HITS.incrementAndGet();
-                }
                 return new ByteArrayInputStream(cached);
             }
         }
@@ -79,9 +74,6 @@ public final class FastResourceIO {
             byte[] cached = persistentCache.get(cacheKey);
             if (cached != null) {
                 PERSISTENT_CONTENT_CACHE_HITS.incrementAndGet();
-                if (researchResource) {
-                    PERSISTENT_RESEARCH_CACHE_HITS.incrementAndGet();
-                }
                 return new ByteArrayInputStream(cached);
             }
         }
@@ -108,6 +100,16 @@ public final class FastResourceIO {
         if (cached != null) {
             EXISTENCE_HITS.incrementAndGet();
             return cached.booleanValue();
+        }
+
+        PersistentModelCache persistentCache = persistentCacheFor(resourcePack);
+        if (persistentCache != null) {
+            Boolean indexed = persistentCache.resourceExists(location.toString());
+            if (indexed != null) {
+                PERSISTENT_EXISTENCE_HITS.incrementAndGet();
+                packCache.putIfAbsent(location, indexed);
+                return indexed.booleanValue();
+            }
         }
 
         boolean exists = resourcePack.resourceExists(location);
@@ -148,16 +150,16 @@ public final class FastResourceIO {
         }
 
         LOGGER.info(
-                "FastLoad resource I/O summary: bypassedLeakWrappers={}, fastMissingExceptions={}, existenceQueries={}, existenceCacheHits={}, cachedExistenceEntries={}, contentCacheHits={}, persistentContentCacheHits={}, researchContentCacheHits={}, persistentResearchCacheHits={}, cachedContentEntries={}, cachedContentBytes={}, invalidations={}",
+                "FastLoad resource I/O summary: bypassedLeakWrappers={}, fastMissingExceptions={}, existenceQueries={}, existenceCacheHits={}, persistentExistenceCacheHits={}, indexedResourceEntries={}, cachedExistenceEntries={}, contentCacheHits={}, persistentContentCacheHits={}, cachedContentEntries={}, cachedContentBytes={}, invalidations={}",
                 OPENED_STREAMS.get(),
                 FastFileNotFoundException.getCreatedCount(),
                 EXISTENCE_QUERIES.get(),
                 EXISTENCE_HITS.get(),
+                PERSISTENT_EXISTENCE_HITS.get(),
+                INDEXED_RESOURCE_ENTRIES.get(),
                 cachedEntries,
                 CONTENT_CACHE_HITS.get(),
                 PERSISTENT_CONTENT_CACHE_HITS.get(),
-                RESEARCH_CONTENT_CACHE_HITS.get(),
-                PERSISTENT_RESEARCH_CACHE_HITS.get(),
                 cachedContentEntries,
                 CONTENT_CACHE_BYTES.get(),
                 INVALIDATIONS.get()
@@ -177,19 +179,27 @@ public final class FastResourceIO {
         if (separator >= 0) {
             path = path.substring(separator + 1);
         }
-        return path.endsWith(".json")
-                && (path.startsWith("models/")
-                || path.startsWith("blockstates/")
-                || path.startsWith("research/"));
-    }
-
-    private static boolean isResearchResource(ResourceLocation location) {
-        String path = location.toString();
-        int separator = path.indexOf(':');
-        if (separator >= 0) {
-            path = path.substring(separator + 1);
+        if (path.startsWith("textures/")
+                || path.startsWith("sounds/")
+                || path.startsWith("shaders/")
+                || path.startsWith("font/")) {
+            return false;
         }
-        return path.endsWith(".json") && path.startsWith("research/");
+
+        String lowerPath = path.toLowerCase(java.util.Locale.ROOT);
+        return lowerPath.endsWith(".json")
+                || lowerPath.endsWith(".json5")
+                || lowerPath.endsWith(".mcmeta")
+                || lowerPath.endsWith(".lang")
+                || lowerPath.endsWith(".properties")
+                || lowerPath.endsWith(".cfg")
+                || lowerPath.endsWith(".toml")
+                || lowerPath.endsWith(".xml")
+                || lowerPath.endsWith(".txt")
+                || lowerPath.endsWith(".zs")
+                || lowerPath.endsWith(".obj")
+                || lowerPath.endsWith(".mtl")
+                || lowerPath.endsWith(".csv");
     }
 
     private static InputStream readAndCache(
@@ -268,6 +278,9 @@ public final class FastResourceIO {
         }
 
         PersistentModelCache existing = PERSISTENT_CONTENT_CACHE.putIfAbsent(resourcePack, created);
+        if (existing == null) {
+            INDEXED_RESOURCE_ENTRIES.addAndGet(created.indexedResourceCount());
+        }
         return existing == null ? created : existing;
     }
 

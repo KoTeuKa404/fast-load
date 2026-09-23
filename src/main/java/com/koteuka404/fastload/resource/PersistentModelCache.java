@@ -25,6 +25,10 @@ import java.security.NoSuchAlgorithmException;
 import java.util.HashMap;
 import java.util.Map;
 
+/*
+ * Persistent raw-resource cache for unchanged mod JARs. The class keeps the
+ * old source name for cache compatibility; entries are not limited to models.
+ */
 final class PersistentModelCache {
     private static final Logger LOGGER = LogManager.getLogger("FastLoad");
     private static final int MAGIC = 0x464D4331; // FMC1
@@ -34,12 +38,14 @@ final class PersistentModelCache {
     private static final long MAX_CACHE_BYTES = 64L * 1024L * 1024L;
 
     private final File file;
+    private final PersistentResourceIndex resourceIndex;
     private final Map<String, byte[]> entries = new HashMap<String, byte[]>();
     private long totalBytes;
     private boolean dirty;
 
-    private PersistentModelCache(File file) {
+    private PersistentModelCache(File file, File source) {
         this.file = file;
+        this.resourceIndex = PersistentResourceIndex.forSource(source);
         load();
     }
 
@@ -54,15 +60,23 @@ final class PersistentModelCache {
             if (source == null || !source.isFile()) {
                 return null;
             }
-            return new PersistentModelCache(cacheFileFor(source));
+            return new PersistentModelCache(cacheFileFor(source), source);
         } catch (Throwable t) {
-            LOGGER.debug("Could not identify resource-pack source for persistent model cache", t);
+            LOGGER.debug("Could not identify resource-pack source for persistent mod-resource cache", t);
             return null;
         }
     }
 
     synchronized byte[] get(String key) {
         return entries.get(key);
+    }
+
+    Boolean resourceExists(String key) {
+        return resourceIndex == null ? null : resourceIndex.contains(key);
+    }
+
+    int indexedResourceCount() {
+        return resourceIndex == null ? 0 : resourceIndex.size();
     }
 
     synchronized void put(String key, byte[] content) {
@@ -113,7 +127,7 @@ final class PersistentModelCache {
             moved = true;
             dirty = false;
         } catch (IOException e) {
-            LOGGER.debug("Could not write persistent model cache {}", file, e);
+            LOGGER.debug("Could not write persistent mod-resource cache {}", file, e);
         } finally {
             if (!moved && temp != null) {
                 try {
@@ -167,7 +181,7 @@ final class PersistentModelCache {
         } catch (IOException e) {
             entries.clear();
             totalBytes = 0L;
-            LOGGER.debug("Ignoring unreadable persistent model cache {}", file, e);
+            LOGGER.debug("Ignoring unreadable persistent mod-resource cache {}", file, e);
         }
     }
 
