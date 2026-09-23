@@ -178,4 +178,4 @@ The built JAR appears in `build/libs/`.
 
 ## Current scope
 
-v0.7.8 makes the v0.6 resource/model optimizations production-runtime safe, persists a safe mod-resource index and static resources for all unchanged mod JARs, and keeps textures, CraftTweaker execution, and arbitrary mod lifecycle code out of the cache.
+v0.7.9 makes the v0.6 resource/model optimizations production-runtime safe, persists a safe mod-resource index and static resources for all unchanged mod JARs, directly indexes Thaumcraft research resources that bypass Minecraft's resource manager, and defers CraftTweaker's redundant search-tree rebuild until Forge's final mapping step. Textures, CraftTweaker execution, recipe registration, and arbitrary mod lifecycle code remain outside the persistent cache.

@@ -39,6 +39,9 @@ public final class FastResourceIO {
     private static final AtomicLong INVALIDATIONS = new AtomicLong();
     private static final AtomicLong CONTENT_CACHE_HITS = new AtomicLong();
     private static final AtomicLong PERSISTENT_CONTENT_CACHE_HITS = new AtomicLong();
+    private static final AtomicLong RESEARCH_CLASSPATH_QUERIES = new AtomicLong();
+    private static final AtomicLong RESEARCH_CLASSPATH_HITS = new AtomicLong();
+    private static final AtomicLong RESEARCH_CLASSPATH_FALLBACKS = new AtomicLong();
     private static final AtomicLong CONTENT_CACHE_BYTES = new AtomicLong();
 
     private static volatile boolean summaryLogged;
@@ -122,6 +125,17 @@ public final class FastResourceIO {
         return exists;
     }
 
+    public static InputStream openClasspathResource(Object ownerObject, Object pathObject) {
+        RESEARCH_CLASSPATH_QUERIES.incrementAndGet();
+        InputStream stream = ClasspathResearchCache.open(ownerObject, pathObject);
+        if (stream != null) {
+            RESEARCH_CLASSPATH_HITS.incrementAndGet();
+        } else {
+            RESEARCH_CLASSPATH_FALLBACKS.incrementAndGet();
+        }
+        return stream;
+    }
+
     public static void invalidateExistenceCache() {
         flushPersistentContentCaches();
         EXISTENCE_CACHE.clear();
@@ -150,7 +164,7 @@ public final class FastResourceIO {
         }
 
         LOGGER.info(
-                "FastLoad resource I/O summary: bypassedLeakWrappers={}, fastMissingExceptions={}, existenceQueries={}, existenceCacheHits={}, persistentExistenceCacheHits={}, indexedResourceEntries={}, cachedExistenceEntries={}, contentCacheHits={}, persistentContentCacheHits={}, cachedContentEntries={}, cachedContentBytes={}, invalidations={}",
+                "FastLoad resource I/O summary: bypassedLeakWrappers={}, fastMissingExceptions={}, existenceQueries={}, existenceCacheHits={}, persistentExistenceCacheHits={}, indexedResourceEntries={}, cachedExistenceEntries={}, contentCacheHits={}, persistentContentCacheHits={}, cachedContentEntries={}, cachedContentBytes={}, researchClasspathQueries={}, researchClasspathHits={}, researchClasspathFallbacks={}, researchClasspathIndexEntries={}, invalidations={}",
                 OPENED_STREAMS.get(),
                 FastFileNotFoundException.getCreatedCount(),
                 EXISTENCE_QUERIES.get(),
@@ -162,6 +176,10 @@ public final class FastResourceIO {
                 PERSISTENT_CONTENT_CACHE_HITS.get(),
                 cachedContentEntries,
                 CONTENT_CACHE_BYTES.get(),
+                RESEARCH_CLASSPATH_QUERIES.get(),
+                RESEARCH_CLASSPATH_HITS.get(),
+                RESEARCH_CLASSPATH_FALLBACKS.get(),
+                ClasspathResearchCache.indexedEntries(),
                 INVALIDATIONS.get()
         );
 

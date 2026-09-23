@@ -16,7 +16,9 @@ public final class FastLoadCorePlugin implements IFMLLoadingPlugin {
                 "com.koteuka404.fastload.core.JarDiscovererTransformer",
                 "com.koteuka404.fastload.core.ForgeMappingTransformer",
                 "com.koteuka404.fastload.core.ResourceManagerTransformer",
-                "com.koteuka404.fastload.core.ModelLoaderTransformer"
+                "com.koteuka404.fastload.core.ModelLoaderTransformer",
+                "com.koteuka404.fastload.core.ThaumcraftTransformer",
+                "com.koteuka404.fastload.core.CraftTweakerTransformer"
         };
     }
 
