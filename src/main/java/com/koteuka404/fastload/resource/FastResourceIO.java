@@ -11,6 +11,9 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.SequenceInputStream;
 import java.util.Map;
+import java.util.Collections;
+import java.util.IdentityHashMap;
+import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicLong;
 
@@ -137,12 +140,41 @@ public final class FastResourceIO {
     }
 
     public static void invalidateExistenceCache() {
+        invalidateExistenceCache(null);
+    }
+
+    /**
+     * Resource reloads replace the volatile existence/content results, but
+     * unchanged Forge mod JARs remain immutable. Keep their already-loaded
+     * persistent content cache when the same pack objects participate in the
+     * reload. Dynamic/external packs are still fully discarded.
+     *
+     * The argument is Object on purpose: the injected call must survive the
+     * production reobfuscation boundary without embedding Minecraft types in
+     * the helper descriptor.
+     */
+    public static void invalidateExistenceCache(Object resourcePacksObject) {
         flushPersistentContentCaches();
         EXISTENCE_CACHE.clear();
         CONTENT_CACHE.clear();
         CONTENT_CACHE_BYTES.set(0L);
-        PERSISTENT_CONTENT_CACHE.clear();
-        NO_PERSISTENT_CONTENT_CACHE.clear();
+
+        Set<IResourcePack> activePacks = activeResourcePacks(resourcePacksObject);
+        if (activePacks == null) {
+            PERSISTENT_CONTENT_CACHE.clear();
+            NO_PERSISTENT_CONTENT_CACHE.clear();
+        } else {
+            for (IResourcePack pack : PERSISTENT_CONTENT_CACHE.keySet()) {
+                if (!activePacks.contains(pack)) {
+                    PERSISTENT_CONTENT_CACHE.remove(pack);
+                }
+            }
+            for (IResourcePack pack : NO_PERSISTENT_CONTENT_CACHE) {
+                if (!activePacks.contains(pack)) {
+                    NO_PERSISTENT_CONTENT_CACHE.remove(pack);
+                }
+            }
+        }
         INVALIDATIONS.incrementAndGet();
     }
 
@@ -306,5 +338,21 @@ public final class FastResourceIO {
         for (PersistentModelCache cache : PERSISTENT_CONTENT_CACHE.values()) {
             cache.flush();
         }
+    }
+
+    private static Set<IResourcePack> activeResourcePacks(Object resourcePacksObject) {
+        if (!(resourcePacksObject instanceof Iterable<?>)) {
+            return null;
+        }
+
+        Set<IResourcePack> active = Collections.newSetFromMap(
+                new IdentityHashMap<IResourcePack, Boolean>()
+        );
+        for (Object value : (Iterable<?>) resourcePacksObject) {
+            if (value instanceof IResourcePack) {
+                active.add((IResourcePack) value);
+            }
+        }
+        return active;
     }
 }

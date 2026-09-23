@@ -14,7 +14,7 @@ import net.minecraftforge.fml.common.event.FMLPreInitializationEvent;
 public final class FastLoad {
     public static final String MODID = "fastload";
     public static final String NAME = "FastLoad";
-    public static final String VERSION = "0.7.10";
+    public static final String VERSION = "0.7.11";
 
     @Mod.EventHandler
     public void preInit(FMLPreInitializationEvent event) {

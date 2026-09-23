@@ -32,6 +32,7 @@ public final class ResourceManagerTransformer implements IClassTransformer {
     private static final String FAST_EXISTS_DESC =
             "(Ljava/lang/Object;Ljava/lang/Object;)Z";
     private static final String RELOAD_RESOURCES_DESC = "(Ljava/util/List;)V";
+    private static final String FAST_INVALIDATE_DESC = "(Ljava/lang/Object;)V";
 
     private static final String JAVA_FNFE = "java/io/FileNotFoundException";
     private static final String FAST_FNFE = "com/koteuka404/fastload/resource/FastFileNotFoundException";
@@ -242,11 +243,12 @@ public final class ResourceManagerTransformer implements IClassTransformer {
                     && (method.access & Opcodes.ACC_STATIC) == 0
                     && (method.access & Opcodes.ACC_PUBLIC) != 0) {
                 InsnList prefix = new InsnList();
+                prefix.add(new VarInsnNode(Opcodes.ALOAD, 1));
                 prefix.add(new MethodInsnNode(
                         Opcodes.INVOKESTATIC,
                         FAST_IO,
                         "invalidateExistenceCache",
-                        "()V",
+                        FAST_INVALIDATE_DESC,
                         false
                 ));
                 method.instructions.insert(prefix);

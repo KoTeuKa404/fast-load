@@ -14,6 +14,15 @@ On the first launch FastLoad scans mod JARs normally and records:
 
 On later launches, unchanged JARs can restore this discovery data without reopening and ASM-parsing every `.class` file.
 
+## v0.7.11 reload-safe resource cache reuse
+
+v0.7.11 keeps the in-memory content cache for unchanged Forge mod resource-pack
+objects across resource reloads. Volatile existence and external resource-pack
+content results are still discarded on every reload, while persistent mod-JAR
+entries are retained only when the same pack object is part of the new reload.
+This avoids rereading the same model and blockstate JSON several times during
+startup without weakening reload correctness.
+
 ## v0.7.8 persistent mod-resource index and cache
 
 v0.7.8 adds a persistent asset-name index for every unchanged Forge mod JAR. Forge `resourceExists` checks can answer both positive and negative lookups from that index instead of reopening the JAR for every query. The bounded raw-resource cache covers static metadata and data resources: JSON, language files, properties, configs, scripts, model text, and similar small resources.
