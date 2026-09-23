@@ -18,10 +18,19 @@ public final class ThaumcraftTransformer implements net.minecraft.launchwrapper.
 
     private static final boolean ENABLED =
             Boolean.parseBoolean(System.getProperty("fastload.researchClasspathCache", "true"));
+    private static boolean compatibilityWarningLogged;
 
     @Override
     public byte[] transform(String name, String transformedName, byte[] basicClass) {
         if (!ENABLED || basicClass == null || !TARGET.equals(transformedName)) {
+            return basicClass;
+        }
+
+        if (isThaumcraftFixPresent()) {
+            if (!compatibilityWarningLogged) {
+                compatibilityWarningLogged = true;
+                LOGGER.warn("FastLoad: ThaumcraftFix detected; disabling the direct research hook for transformer compatibility.");
+            }
             return basicClass;
         }
 
@@ -69,6 +78,16 @@ public final class ThaumcraftTransformer implements net.minecraft.launchwrapper.
         } catch (Throwable t) {
             LOGGER.error("Failed to install Thaumcraft research resource cache; keeping original behavior.", t);
             return basicClass;
+        }
+    }
+
+    private static boolean isThaumcraftFixPresent() {
+        try {
+            ClassLoader loader = ThaumcraftTransformer.class.getClassLoader();
+            return loader != null && loader.getResource(
+                    "thecodex6824/thaumcraftfix/core/TransformerExecutor.class") != null;
+        } catch (Throwable ignored) {
+            return false;
         }
     }
 }
