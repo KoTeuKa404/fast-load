@@ -22,7 +22,7 @@ import java.io.InputStream;
 import java.lang.reflect.Constructor;
 import java.lang.reflect.Field;
 import java.util.ArrayList;
-import java.util.Collections;
+import java.util.Enumeration;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -114,12 +114,14 @@ public final class FastJarScanner {
         try (JarFile jar = new JarFile(source)) {
             MetadataCollection metadata = readMetadata(jar, source);
 
-            for (ZipEntry entry : Collections.list(jar.entries())) {
+            Enumeration<? extends ZipEntry> entries = jar.entries();
+            while (entries.hasMoreElements()) {
+                ZipEntry entry = entries.nextElement();
                 String name = entry.getName();
-                if (name != null && name.startsWith("__MACOSX")) {
+                if (name == null || name.startsWith("__MACOSX") || !name.endsWith(".class")) {
                     continue;
                 }
-                Matcher match = ITypeDiscoverer.classFile.matcher(name == null ? "" : name);
+                Matcher match = ITypeDiscoverer.classFile.matcher(name);
                 if (!match.matches()) {
                     continue;
                 }

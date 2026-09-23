@@ -14,6 +14,10 @@ On the first launch FastLoad scans mod JARs normally and records:
 
 On later launches, unchanged JARs can restore this discovery data without reopening and ASM-parsing every `.class` file.
 
+## v0.7.3 lower-overhead cold discovery scan
+
+v0.7.3 keeps the discovery cache behavior unchanged but removes avoidable work on cache misses. Forge discovery now walks the JAR entry enumeration directly and rejects non-class resources before invoking the class-file matcher. The scan still visits every `.class` entry in the original JAR order, so the captured ASM and mod-container data remain unchanged.
+
 ## v0.7.2 runtime-derived resource hooks
 
 v0.7.2 removes the last name-based assumptions from the resource optimization. FastLoad now finds the unique two-argument `InputStream` helper inside `FallbackResourceManager`, derives the exact runtime `IResourcePack` internal name from that method descriptor, and patches only boolean one-argument interface calls on that exact owner.
