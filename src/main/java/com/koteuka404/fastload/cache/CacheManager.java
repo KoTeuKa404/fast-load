@@ -30,6 +30,7 @@ final class CacheManager {
     static final boolean ENABLED = getBoolean("fastload.cache", true);
     private static final boolean STRICT_HASHES = getBoolean("fastload.strictHashes", false);
     private static final boolean HASH_ON_METADATA_CHANGE = getBoolean("fastload.hashOnMetadataChange", true);
+    private static final boolean HASH_ON_SAVE = getBoolean("fastload.hashOnSave", false);
 
     private CacheManager() {
     }
@@ -69,6 +70,10 @@ final class CacheManager {
                 return null;
             }
 
+            if (cache.sourceSha256 == null) {
+                return null;
+            }
+
             byte[] currentHash = sha256(source);
             if (!constantTimeEquals(currentHash, cache.sourceSha256)) {
                 return null;
@@ -96,7 +101,7 @@ final class CacheManager {
         }
         cache.sourceSize = source.length();
         cache.sourceModified = source.lastModified();
-        cache.sourceSha256 = sha256(source);
+        cache.sourceSha256 = HASH_ON_SAVE || STRICT_HASHES ? sha256(source) : null;
         cache.forgeVersion = forgeVersion();
         cache.containerSignature = containerSignature();
         CacheCodec.writeAtomic(cacheFileFor(source), cache);

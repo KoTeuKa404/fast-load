@@ -77,7 +77,7 @@ final class CacheCodec {
             cache.sourceSize = in.readLong();
             cache.sourceModified = in.readLong();
             cache.sourceSha256 = readByteArray(in, 64);
-            if (cache.sourceSha256 == null || cache.sourceSha256.length != 32) {
+            if (cache.sourceSha256 != null && cache.sourceSha256.length != 32) {
                 throw new IOException("Invalid SHA-256 length in FastLoad cache");
             }
             cache.forgeVersion = readString(in);

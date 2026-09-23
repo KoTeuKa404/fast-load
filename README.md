@@ -14,6 +14,15 @@ On the first launch FastLoad scans mod JARs normally and records:
 
 On later launches, unchanged JARs can restore this discovery data without reopening and ASM-parsing every `.class` file.
 
+## v0.7.4 resource content reuse and cheaper cold cache writes
+
+v0.7.4 adds two bounded startup optimizations:
+
+- model and blockstate JSON streams are reused in memory during one resource reload, capped at 256 KiB per file and 64 MiB total, then released after the reload summary;
+- discovery-cache writes no longer hash every JAR a second time by default. Cache entries still validate unchanged size and timestamp, while metadata changes safely rebuild unless `-Dfastload.hashOnSave=true` is enabled.
+
+The resource-content cache can be disabled with `-Dfastload.resourceContentCache=false`. Strict SHA-256 validation remains available with `-Dfastload.strictHashes=true`.
+
 ## v0.7.3 lower-overhead cold discovery scan
 
 v0.7.3 keeps the discovery cache behavior unchanged but removes avoidable work on cache misses. Forge discovery now walks the JAR entry enumeration directly and rejects non-class resources before invoking the class-file matcher. The scan still visits every `.class` entry in the original JAR order, so the captured ASM and mod-container data remain unchanged.
@@ -118,11 +127,13 @@ FastLoad is designed to fail open:
 - `-Dfastload.cache=false` — disable the discovery cache.
 - `-Dfastload.strictHashes=true` — verify SHA-256 on every cache lookup.
 - `-Dfastload.hashOnMetadataChange=false` — rebuild immediately when file metadata changes instead of checking whether content stayed identical.
+- `-Dfastload.hashOnSave=true` — calculate and store a SHA-256 fingerprint during every cold cache write.
 - `-Dfastload.optimizeFinalSearchTrees=false` — disable final search-tree optimization.
 - `-Dfastload.lazyRecipeSearchTree=false` — eagerly rebuild the final recipe search tree instead of deferring it.
 - `-Dfastload.resourceLeakTracking=true` — restore vanilla DEBUG leaked-resource stream stacktrace tracking.
 - `-Dfastload.fastMissingResources=false` — use normal stack-filled `FileNotFoundException` instances for missing resources.
 - `-Dfastload.resourceExistsCache=false` — disable per-reload `resourceExists` memoization.
+- `-Dfastload.resourceContentCache=false` — disable bounded model/blockstate JSON content reuse during a resource reload.
 - `-Dfastload.negativeModelCache=false` — do not remember failed model locations during a reload.
 - `-Dfastload.fastModelExceptions=false` — restore full Forge model-loader exception stack traces.
 
@@ -155,4 +166,4 @@ The built JAR appears in `build/libs/`.
 
 ## Current scope
 
-v0.7 makes the v0.6 resource/model optimizations production-runtime safe. It memoizes resource existence during reloads, negative-caches failed models for that reload, and removes model-loader stacktrace allocation overhead. It still does not persist baked models, textures, CraftTweaker execution, or arbitrary mod lifecycle code across launches.
+v0.7.4 makes the v0.6 resource/model optimizations production-runtime safe and adds bounded in-memory reuse for model/blockstate JSON streams. It still does not persist baked models, textures, CraftTweaker execution, or arbitrary mod lifecycle code across launches.

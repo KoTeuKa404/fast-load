@@ -163,7 +163,8 @@ public final class ResourceManagerTransformer implements IClassTransformer {
         target.maxLocals = 3;
 
         LOGGER.info(
-                "FastLoad v0.7.2: matched runtime resource stream helper {}{}.",
+                "FastLoad {}: matched runtime resource stream helper {}{}.",
+                com.koteuka404.fastload.FastLoad.VERSION,
                 target.name,
                 target.desc
         );
@@ -223,7 +224,8 @@ public final class ResourceManagerTransformer implements IClassTransformer {
             );
         } else {
             LOGGER.info(
-                    "FastLoad v0.7.2: derived runtime IResourcePack owner {} and patched {} resourceExists call site(s).",
+                    "FastLoad {}: derived runtime IResourcePack owner {} and patched {} resourceExists call site(s).",
+                    com.koteuka404.fastload.FastLoad.VERSION,
                     resourcePackOwner,
                     replacements
             );
