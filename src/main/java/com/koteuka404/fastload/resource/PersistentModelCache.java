@@ -130,6 +130,8 @@ final class PersistentModelCache {
             return;
         }
 
+        Map<String, byte[]> loadedEntries = new HashMap<String, byte[]>();
+        long loadedBytes = 0L;
         try (DataInputStream in = new DataInputStream(new BufferedInputStream(new FileInputStream(file)))) {
             if (in.readInt() != MAGIC || in.readInt() != FORMAT_VERSION) {
                 return;
@@ -143,18 +145,22 @@ final class PersistentModelCache {
             for (int i = 0; i < count; i++) {
                 String key = in.readUTF();
                 int length = in.readInt();
-                if (length <= 0 || length > MAX_ENTRY_BYTES || totalBytes + length > MAX_CACHE_BYTES) {
+                if (length <= 0 || length > MAX_ENTRY_BYTES || loadedBytes + length > MAX_CACHE_BYTES) {
                     return;
                 }
                 byte[] content = new byte[length];
                 in.readFully(content);
-                entries.put(key, content);
-                totalBytes += length;
+                if (loadedEntries.put(key, content) != null) {
+                    return;
+                }
+                loadedBytes += length;
             }
 
             if (in.read() != -1) {
                 return;
             }
+            entries.putAll(loadedEntries);
+            totalBytes = loadedBytes;
         } catch (EOFException e) {
             entries.clear();
             totalBytes = 0L;

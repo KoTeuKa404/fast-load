@@ -14,6 +14,12 @@ On the first launch FastLoad scans mod JARs normally and records:
 
 On later launches, unchanged JARs can restore this discovery data without reopening and ASM-parsing every `.class` file.
 
+## v0.7.6 persistent model/research resource cache
+
+v0.7.6 extends the bounded JSON cache to Thaumcraft-compatible `research/*.json` resources. These files are read while Thaumcraft builds its research registry during PostInit, so unchanged mod JARs no longer need to reopen them from disk on every launch. The cache only reuses raw bytes; JSON parsing and registry construction still run normally.
+
+The cache remains bounded and fail-open. Dynamic and external resource packs are left on the original path.
+
 ## v0.7.5 persistent model-resource cache
 
 v0.7.5 extends the bounded model/blockstate JSON cache across launches for unchanged Forge mod JARs. Each cache file is tied to the canonical source path, file size, and modification time, uses a bounded binary format, and is written atomically after the resource reload. Dynamic and external resource packs are left on the original path. Corrupt or unavailable cache files are ignored.
@@ -172,4 +178,4 @@ The built JAR appears in `build/libs/`.
 
 ## Current scope
 
-v0.7.4 makes the v0.6 resource/model optimizations production-runtime safe and adds bounded in-memory reuse for model/blockstate JSON streams. It still does not persist baked models, textures, CraftTweaker execution, or arbitrary mod lifecycle code across launches.
+v0.7.6 makes the v0.6 resource/model optimizations production-runtime safe, adds persistent raw research-resource reuse, and keeps baked models, textures, CraftTweaker execution, and arbitrary mod lifecycle code out of the cache.

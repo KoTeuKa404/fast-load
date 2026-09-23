@@ -37,6 +37,8 @@ public final class FastResourceIO {
     private static final AtomicLong INVALIDATIONS = new AtomicLong();
     private static final AtomicLong CONTENT_CACHE_HITS = new AtomicLong();
     private static final AtomicLong PERSISTENT_CONTENT_CACHE_HITS = new AtomicLong();
+    private static final AtomicLong RESEARCH_CONTENT_CACHE_HITS = new AtomicLong();
+    private static final AtomicLong PERSISTENT_RESEARCH_CACHE_HITS = new AtomicLong();
     private static final AtomicLong CONTENT_CACHE_BYTES = new AtomicLong();
 
     private static volatile boolean summaryLogged;
@@ -53,15 +55,20 @@ public final class FastResourceIO {
         IResourcePack resourcePack = (IResourcePack) resourcePackObject;
 
         OPENED_STREAMS.incrementAndGet();
-        if (!RESOURCE_CONTENT_CACHE || !isCacheableModelResource(location)) {
+        if (!RESOURCE_CONTENT_CACHE || !isCacheableResource(location)) {
             return resourcePack.getInputStream(location);
         }
+
+        boolean researchResource = isResearchResource(location);
 
         ConcurrentHashMap<ResourceLocation, byte[]> packCache = CONTENT_CACHE.get(resourcePack);
         if (packCache != null) {
             byte[] cached = packCache.get(location);
             if (cached != null) {
                 CONTENT_CACHE_HITS.incrementAndGet();
+                if (researchResource) {
+                    RESEARCH_CONTENT_CACHE_HITS.incrementAndGet();
+                }
                 return new ByteArrayInputStream(cached);
             }
         }
@@ -72,6 +79,9 @@ public final class FastResourceIO {
             byte[] cached = persistentCache.get(cacheKey);
             if (cached != null) {
                 PERSISTENT_CONTENT_CACHE_HITS.incrementAndGet();
+                if (researchResource) {
+                    PERSISTENT_RESEARCH_CACHE_HITS.incrementAndGet();
+                }
                 return new ByteArrayInputStream(cached);
             }
         }
@@ -138,7 +148,7 @@ public final class FastResourceIO {
         }
 
         LOGGER.info(
-                "FastLoad resource I/O summary: bypassedLeakWrappers={}, fastMissingExceptions={}, existenceQueries={}, existenceCacheHits={}, cachedExistenceEntries={}, contentCacheHits={}, persistentContentCacheHits={}, cachedContentEntries={}, cachedContentBytes={}, invalidations={}",
+                "FastLoad resource I/O summary: bypassedLeakWrappers={}, fastMissingExceptions={}, existenceQueries={}, existenceCacheHits={}, cachedExistenceEntries={}, contentCacheHits={}, persistentContentCacheHits={}, researchContentCacheHits={}, persistentResearchCacheHits={}, cachedContentEntries={}, cachedContentBytes={}, invalidations={}",
                 OPENED_STREAMS.get(),
                 FastFileNotFoundException.getCreatedCount(),
                 EXISTENCE_QUERIES.get(),
@@ -146,6 +156,8 @@ public final class FastResourceIO {
                 cachedEntries,
                 CONTENT_CACHE_HITS.get(),
                 PERSISTENT_CONTENT_CACHE_HITS.get(),
+                RESEARCH_CONTENT_CACHE_HITS.get(),
+                PERSISTENT_RESEARCH_CACHE_HITS.get(),
                 cachedContentEntries,
                 CONTENT_CACHE_BYTES.get(),
                 INVALIDATIONS.get()
@@ -159,14 +171,25 @@ public final class FastResourceIO {
         NO_PERSISTENT_CONTENT_CACHE.clear();
     }
 
-    private static boolean isCacheableModelResource(ResourceLocation location) {
+    private static boolean isCacheableResource(ResourceLocation location) {
         String path = location.toString();
         int separator = path.indexOf(':');
         if (separator >= 0) {
             path = path.substring(separator + 1);
         }
         return path.endsWith(".json")
-                && (path.startsWith("models/") || path.startsWith("blockstates/"));
+                && (path.startsWith("models/")
+                || path.startsWith("blockstates/")
+                || path.startsWith("research/"));
+    }
+
+    private static boolean isResearchResource(ResourceLocation location) {
+        String path = location.toString();
+        int separator = path.indexOf(':');
+        if (separator >= 0) {
+            path = path.substring(separator + 1);
+        }
+        return path.endsWith(".json") && path.startsWith("research/");
     }
 
     private static InputStream readAndCache(
