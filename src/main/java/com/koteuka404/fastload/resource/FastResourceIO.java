@@ -21,6 +21,10 @@ public final class FastResourceIO {
             EXISTENCE_CACHE = new ConcurrentHashMap<IResourcePack, ConcurrentHashMap<ResourceLocation, Boolean>>();
     private static final ConcurrentHashMap<IResourcePack, ConcurrentHashMap<ResourceLocation, byte[]>>
             CONTENT_CACHE = new ConcurrentHashMap<IResourcePack, ConcurrentHashMap<ResourceLocation, byte[]>>();
+    private static final ConcurrentHashMap<IResourcePack, PersistentModelCache>
+            PERSISTENT_CONTENT_CACHE = new ConcurrentHashMap<IResourcePack, PersistentModelCache>();
+    private static final java.util.Set<IResourcePack> NO_PERSISTENT_CONTENT_CACHE =
+            java.util.Collections.newSetFromMap(new ConcurrentHashMap<IResourcePack, Boolean>());
 
     private static final boolean RESOURCE_CONTENT_CACHE =
             Boolean.parseBoolean(System.getProperty("fastload.resourceContentCache", "true"));
@@ -32,6 +36,7 @@ public final class FastResourceIO {
     private static final AtomicLong EXISTENCE_HITS = new AtomicLong();
     private static final AtomicLong INVALIDATIONS = new AtomicLong();
     private static final AtomicLong CONTENT_CACHE_HITS = new AtomicLong();
+    private static final AtomicLong PERSISTENT_CONTENT_CACHE_HITS = new AtomicLong();
     private static final AtomicLong CONTENT_CACHE_BYTES = new AtomicLong();
 
     private static volatile boolean summaryLogged;
@@ -61,7 +66,17 @@ public final class FastResourceIO {
             }
         }
 
-        return readAndCache(resourcePack, location, resourcePack.getInputStream(location), packCache);
+        PersistentModelCache persistentCache = persistentCacheFor(resourcePack);
+        String cacheKey = location.toString();
+        if (persistentCache != null) {
+            byte[] cached = persistentCache.get(cacheKey);
+            if (cached != null) {
+                PERSISTENT_CONTENT_CACHE_HITS.incrementAndGet();
+                return new ByteArrayInputStream(cached);
+            }
+        }
+
+        return readAndCache(resourcePack, location, resourcePack.getInputStream(location), packCache, persistentCache, cacheKey);
     }
 
     public static boolean resourceExists(Object resourcePackObject, Object locationObject) {
@@ -96,9 +111,12 @@ public final class FastResourceIO {
     }
 
     public static void invalidateExistenceCache() {
+        flushPersistentContentCaches();
         EXISTENCE_CACHE.clear();
         CONTENT_CACHE.clear();
         CONTENT_CACHE_BYTES.set(0L);
+        PERSISTENT_CONTENT_CACHE.clear();
+        NO_PERSISTENT_CONTENT_CACHE.clear();
         INVALIDATIONS.incrementAndGet();
     }
 
@@ -120,21 +138,25 @@ public final class FastResourceIO {
         }
 
         LOGGER.info(
-                "FastLoad resource I/O summary: bypassedLeakWrappers={}, fastMissingExceptions={}, existenceQueries={}, existenceCacheHits={}, cachedExistenceEntries={}, contentCacheHits={}, cachedContentEntries={}, cachedContentBytes={}, invalidations={}",
+                "FastLoad resource I/O summary: bypassedLeakWrappers={}, fastMissingExceptions={}, existenceQueries={}, existenceCacheHits={}, cachedExistenceEntries={}, contentCacheHits={}, persistentContentCacheHits={}, cachedContentEntries={}, cachedContentBytes={}, invalidations={}",
                 OPENED_STREAMS.get(),
                 FastFileNotFoundException.getCreatedCount(),
                 EXISTENCE_QUERIES.get(),
                 EXISTENCE_HITS.get(),
                 cachedEntries,
                 CONTENT_CACHE_HITS.get(),
+                PERSISTENT_CONTENT_CACHE_HITS.get(),
                 cachedContentEntries,
                 CONTENT_CACHE_BYTES.get(),
                 INVALIDATIONS.get()
         );
 
+        flushPersistentContentCaches();
         EXISTENCE_CACHE.clear();
         CONTENT_CACHE.clear();
         CONTENT_CACHE_BYTES.set(0L);
+        PERSISTENT_CONTENT_CACHE.clear();
+        NO_PERSISTENT_CONTENT_CACHE.clear();
     }
 
     private static boolean isCacheableModelResource(ResourceLocation location) {
@@ -151,7 +173,9 @@ public final class FastResourceIO {
             IResourcePack resourcePack,
             ResourceLocation location,
             InputStream source,
-            ConcurrentHashMap<ResourceLocation, byte[]> packCache
+            ConcurrentHashMap<ResourceLocation, byte[]> packCache,
+            PersistentModelCache persistentCache,
+            String cacheKey
     ) throws IOException {
         ByteArrayOutputStream output = new ByteArrayOutputStream();
         byte[] buffer = new byte[8192];
@@ -201,6 +225,32 @@ public final class FastResourceIO {
             CONTENT_CACHE_BYTES.addAndGet(-content.length);
         }
 
+        if (persistentCache != null) {
+            persistentCache.put(cacheKey, content);
+        }
+
         return new ByteArrayInputStream(content);
+    }
+
+    private static PersistentModelCache persistentCacheFor(IResourcePack resourcePack) {
+        PersistentModelCache cached = PERSISTENT_CONTENT_CACHE.get(resourcePack);
+        if (cached != null || NO_PERSISTENT_CONTENT_CACHE.contains(resourcePack)) {
+            return cached;
+        }
+
+        PersistentModelCache created = PersistentModelCache.forPack(resourcePack);
+        if (created == null) {
+            NO_PERSISTENT_CONTENT_CACHE.add(resourcePack);
+            return null;
+        }
+
+        PersistentModelCache existing = PERSISTENT_CONTENT_CACHE.putIfAbsent(resourcePack, created);
+        return existing == null ? created : existing;
+    }
+
+    private static void flushPersistentContentCaches() {
+        for (PersistentModelCache cache : PERSISTENT_CONTENT_CACHE.values()) {
+            cache.flush();
+        }
     }
 }

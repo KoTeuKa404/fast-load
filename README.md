@@ -14,6 +14,12 @@ On the first launch FastLoad scans mod JARs normally and records:
 
 On later launches, unchanged JARs can restore this discovery data without reopening and ASM-parsing every `.class` file.
 
+## v0.7.5 persistent model-resource cache
+
+v0.7.5 extends the bounded model/blockstate JSON cache across launches for unchanged Forge mod JARs. Each cache file is tied to the canonical source path, file size, and modification time, uses a bounded binary format, and is written atomically after the resource reload. Dynamic and external resource packs are left on the original path. Corrupt or unavailable cache files are ignored.
+
+The persistent cache uses the same `-Dfastload.resourceContentCache=false` switch as the in-memory content cache and is stored below `fastload-cache/resources-v1/`.
+
 ## v0.7.4 resource content reuse and cheaper cold cache writes
 
 v0.7.4 adds two bounded startup optimizations:
